@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 
 async function start() {
   await sequelize.authenticate();
-  await sequelize.sync();
+  await sequelize.sync({ alter: true });
 
   app.listen(PORT, () => {
     console.log(`gym-membership-service listening on port ${PORT}`);
