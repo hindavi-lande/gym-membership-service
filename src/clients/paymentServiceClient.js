@@ -117,12 +117,26 @@ async function charge({ memberId, amount, reason }) {
   return requestJson('POST', '/api/payments/charge', { memberId, amount, reason });
 }
 
+// Resolves { status, body } like charge(): a refund the payments service refuses
+// (409 for an already refunded charge, 422 for an amount over that charge) comes
+// back as a response rather than a transport error, so the caller can tell
+// "pending" from "refused".
+async function refund({ memberId, amount, reason, relatedPaymentId }) {
+  return requestJson('POST', '/api/payments/refund', {
+    memberId,
+    amount,
+    reason,
+    relatedPaymentId,
+  });
+}
+
 async function getMemberPayments(memberId) {
   return requestJson('GET', `/api/payments/member/${encodeURIComponent(memberId)}`);
 }
 
 module.exports = {
   charge,
+  refund,
   getMemberPayments,
   PaymentsServiceUnavailableError,
   PAYMENTS_UNAVAILABLE,

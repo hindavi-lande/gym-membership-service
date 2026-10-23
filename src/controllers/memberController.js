@@ -63,6 +63,15 @@ async function listPayments(req, res, next) {
   }
 }
 
+async function cancel(req, res, next) {
+  try {
+    const { member, refund } = await memberService.cancelMembership(req.params.id);
+    res.json({ ...member.toJSON(), refund });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   list,
   getById,
@@ -71,4 +80,5 @@ module.exports = {
   remove,
   renew,
   listPayments,
+  cancel,
 };
