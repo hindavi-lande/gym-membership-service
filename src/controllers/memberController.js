@@ -1,4 +1,5 @@
 const memberService = require('../services/memberService');
+const renewalService = require('../services/renewalService');
 
 async function list(req, res, next) {
   try {
@@ -45,10 +46,30 @@ async function remove(req, res, next) {
   }
 }
 
+async function renew(req, res, next) {
+  try {
+    const result = await renewalService.renewMember(req.params.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listRenewals(req, res, next) {
+  try {
+    const history = await renewalService.listRenewals(req.params.id);
+    res.json(history);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   list,
   getById,
   create,
   update,
   remove,
+  renew,
+  listRenewals,
 };
