@@ -31,9 +31,10 @@ const Member = sequelize.define('Member', {
     defaultValue: 'BASIC',
   },
   status: {
-    type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'SUSPENDED'),
+    type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'SUSPENDED', 'CANCELLED'),
     allowNull: false,
     defaultValue: 'ACTIVE',
+    validate: { isIn: [['ACTIVE', 'INACTIVE', 'SUSPENDED', 'CANCELLED']] },
   },
   joinedAt: {
     type: DataTypes.DATEONLY,
@@ -44,6 +45,21 @@ const Member = sequelize.define('Member', {
     type: DataTypes.DATEONLY,
     allowNull: false,
     defaultValue: DataTypes.NOW,
+  },
+  // Member-facing outcome of the refund requested by a cancellation. COMPLETED is
+  // the member-facing word for the payments service's SUCCESS; null means no
+  // refund has ever been requested.
+  refundStatus: {
+    type: DataTypes.ENUM('PENDING', 'COMPLETED', 'FAILED'),
+    allowNull: true,
+    validate: { isIn: [['PENDING', 'COMPLETED', 'FAILED']] },
+  },
+  // Set when a refund could not be confirmed at cancellation time, so staff can
+  // follow it up.
+  refundNeedsFollowUp: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
   },
 }, {
   tableName: 'members',
