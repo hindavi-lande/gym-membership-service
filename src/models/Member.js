@@ -40,6 +40,11 @@ const Member = sequelize.define('Member', {
     allowNull: false,
     defaultValue: DataTypes.NOW,
   },
+  renewalDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+  },
 }, {
   tableName: 'members',
   timestamps: true,

@@ -45,10 +45,30 @@ async function remove(req, res, next) {
   }
 }
 
+async function renew(req, res, next) {
+  try {
+    const { member, payment } = await memberService.renewMember(req.params.id);
+    res.json({ member, payment });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function payments(req, res, next) {
+  try {
+    const history = await memberService.getMemberPayments(req.params.id);
+    res.json(history);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   list,
   getById,
   create,
   update,
   remove,
+  renew,
+  payments,
 };

@@ -4,7 +4,7 @@ Baseline Express scaffold for a fitness/gym membership domain: bare-minimum setu
 
 ## Domain model
 
-- **Member** — firstName, lastName, email (unique, required), phone (optional), membershipPlan (`BASIC` / `STANDARD` / `PREMIUM`, defaults to `BASIC`), status (`ACTIVE` / `INACTIVE` / `SUSPENDED`, defaults to `ACTIVE`), joinedAt (defaults to today)
+- **Member** — firstName, lastName, email (unique, required), phone (optional), membershipPlan (`BASIC` / `STANDARD` / `PREMIUM`, defaults to `BASIC`), status (`ACTIVE` / `INACTIVE` / `SUSPENDED`, defaults to `ACTIVE`), joinedAt (defaults to today), renewalDate (defaults to today)
 
 ## Stack
 
@@ -44,6 +44,8 @@ Listens on `http://localhost:3000` (configurable via `PORT`). SQLite file is cre
 - `GET /api/members/:id` — get one (`404` if missing)
 - `PUT /api/members/:id` — partial update
 - `DELETE /api/members/:id`
+- `POST /api/members/:id/renew` — charges the member's plan price (`BASIC` 29.99 / `STANDARD` 49.99 / `PREMIUM` 79.99) through gym-payments-service and, on a successful charge, moves `renewalDate` one year forward. Returns `{ member, payment }`. Responds `503` if the payments service is unreachable and `402` if the charge did not go through; in both cases the renewal is not applied
+- `GET /api/members/:id/payments` — the member's past renewal charges, proxied from gym-payments-service (`503` if it is unreachable)
 
 ## Planned tickets (not yet implemented)
 
