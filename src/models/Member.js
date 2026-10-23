@@ -40,6 +40,14 @@ const Member = sequelize.define('Member', {
     allowNull: false,
     defaultValue: DataTypes.NOW,
   },
+  // Nullable on purpose: only the renewal flow writes it, so members who have
+  // never renewed keep null and existing create/update requests behave as before.
+  // Note sequelize.sync() does not ALTER an existing table, so a local dev
+  // database created before this column must be recreated to pick it up.
+  renewalDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
 }, {
   tableName: 'members',
   timestamps: true,

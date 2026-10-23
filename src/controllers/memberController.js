@@ -1,4 +1,6 @@
 const memberService = require('../services/memberService');
+const renewalService = require('../services/renewalService');
+const paymentsClient = require('../services/paymentsClient');
 
 async function list(req, res, next) {
   try {
@@ -45,10 +47,31 @@ async function remove(req, res, next) {
   }
 }
 
+async function renew(req, res, next) {
+  try {
+    const result = await renewalService.renewMembership(req.params.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listPayments(req, res, next) {
+  try {
+    // Pass-through: the payments service owns the history, nothing is stored here.
+    const payments = await paymentsClient.listForMember(req.params.id);
+    res.json(payments);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   list,
   getById,
   create,
   update,
   remove,
+  renew,
+  listPayments,
 };
