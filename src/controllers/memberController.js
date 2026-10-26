@@ -45,10 +45,20 @@ async function remove(req, res, next) {
   }
 }
 
+async function merge(req, res, next) {
+  try {
+    const member = await memberService.mergeMembers(req.params.id, req.body.duplicateMemberId);
+    res.json(member);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   list,
   getById,
   create,
   update,
   remove,
+  merge,
 };

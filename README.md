@@ -44,6 +44,12 @@ Listens on `http://localhost:3000` (configurable via `PORT`). SQLite file is cre
 - `GET /api/members/:id` — get one (`404` if missing)
 - `PUT /api/members/:id` — partial update
 - `DELETE /api/members/:id`
+- `POST /api/members/:id/merge` — `{ "duplicateMemberId" }` — merges the duplicate account into the account in `:id` (the kept account). The duplicate row is deleted and its payments are moved to the kept account by `POST /api/payments/merge` on gym-payments-service. The kept account's name, plan and status are left unchanged. Returns `200` with the kept member. `400` when `duplicateMemberId` equals `:id` (self-merge), `404` when either account does not exist, and `502` when the payments move fails — in which case nothing is applied and both accounts stay as they were
+
+### Payments service
+
+`POST /api/members/:id/merge` calls gym-payments-service over HTTP. Its base URL comes from
+`PAYMENTS_SERVICE_URL` (default `http://localhost:3001`, see `.env.example`).
 
 ## Planned tickets (not yet implemented)
 
