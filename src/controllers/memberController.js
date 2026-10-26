@@ -11,7 +11,7 @@ async function list(req, res, next) {
 
 async function getById(req, res, next) {
   try {
-    const member = await memberService.getMemberById(req.params.id);
+    const member = await memberService.getMemberProfileById(req.params.id);
     res.json(member);
   } catch (err) {
     next(err);

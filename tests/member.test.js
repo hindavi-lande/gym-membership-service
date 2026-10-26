@@ -151,6 +151,113 @@ describe('DELETE /api/members/:id', () => {
   });
 });
 
+describe('GET /api/members/:id tier and spend', () => {
+  const originalFetch = global.fetch;
+  let memberId;
+
+  beforeEach(async () => {
+    const created = await request(app).post('/api/members').send(validMember);
+    memberId = created.body.id;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function stubSpend(spend) {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ memberId, spend }),
+    });
+  }
+
+  it.each([
+    { spend: 0, tier: 'BRONZE' },
+    { spend: 99.99, tier: 'BRONZE' },
+    { spend: 100, tier: 'SILVER' },
+    { spend: 499.99, tier: 'SILVER' },
+    { spend: 500, tier: 'GOLD' },
+    { spend: -25.5, tier: 'BRONZE' },
+  ])('reports tier $tier for a spend of $spend', async ({ spend, tier }) => {
+    stubSpend(spend);
+
+    const res = await request(app).get(`/api/members/${memberId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tier).toBe(tier);
+    expect(res.body.spend).toBe(spend);
+  });
+
+  it('returns the member fields together with tier and spend', async () => {
+    stubSpend(250.5);
+
+    const res = await request(app).get(`/api/members/${memberId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      firstName: 'Jane',
+      lastName: 'Doe',
+      email: 'jane@example.com',
+      membershipPlan: 'PREMIUM',
+      status: 'ACTIVE',
+      tier: 'SILVER',
+      spend: 250.5,
+    });
+  });
+
+  it('falls back to an unavailable tier when the payments call rejects', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+    const res = await request(app).get(`/api/members/${memberId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: memberId,
+      email: 'jane@example.com',
+      tier: 'UNAVAILABLE',
+      spend: null,
+    });
+  });
+
+  it('falls back to an unavailable tier when the payments call times out', async () => {
+    const timeoutError = new Error('The operation was aborted due to timeout');
+    timeoutError.name = 'TimeoutError';
+    global.fetch = jest.fn().mockRejectedValue(timeoutError);
+
+    const res = await request(app).get(`/api/members/${memberId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tier).toBe('UNAVAILABLE');
+    expect(res.body.spend).toBeNull();
+  });
+
+  it('falls back to an unavailable tier when the payments service reports an error', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ message: 'Service Unavailable' }),
+    });
+
+    const res = await request(app).get(`/api/members/${memberId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tier).toBe('UNAVAILABLE');
+    expect(res.body.spend).toBeNull();
+  });
+
+  it('does not add tier or spend to the members list', async () => {
+    stubSpend(500);
+
+    const res = await request(app).get('/api/members');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).not.toHaveProperty('tier');
+    expect(res.body[0]).not.toHaveProperty('spend');
+  });
+});
+
 describe('unknown routes', () => {
   it('returns 404 for an undefined route', async () => {
     const res = await request(app).get('/api/not-a-real-route');
