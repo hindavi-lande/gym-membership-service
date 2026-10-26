@@ -54,6 +54,15 @@ async function renew(req, res, next) {
   }
 }
 
+async function cancel(req, res, next) {
+  try {
+    const result = await memberService.cancelMembership(req.params.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listPayments(req, res, next) {
   try {
     const payments = await memberService.getMemberPayments(req.params.id);
@@ -70,5 +79,6 @@ module.exports = {
   update,
   remove,
   renew,
+  cancel,
   listPayments,
 };

@@ -180,3 +180,118 @@ describe('paymentClient.getMemberPayments', () => {
     expect(error.message).toContain('try again later');
   });
 });
+
+describe('paymentClient.refund', () => {
+  it('POSTs the refund and resolves with the created payment on 201', async () => {
+    let received;
+    const { url } = await startStubServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        received = { method: req.method, url: req.url, body: JSON.parse(raw) };
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            id: 12,
+            memberId: 4,
+            amount: 25,
+            reason: 'test',
+            status: 'SUCCESS',
+            type: 'REFUND',
+            relatedPaymentId: 12,
+          })
+        );
+      });
+    });
+    process.env.PAYMENTS_SERVICE_URL = url;
+
+    const created = await paymentClient.refund({
+      memberId: 4,
+      amount: 25,
+      reason: 'test',
+      relatedPaymentId: 12,
+    });
+
+    expect(received.method).toBe('POST');
+    expect(received.url).toBe('/api/payments/refund');
+    expect(received.body).toEqual({
+      memberId: 4,
+      amount: 25,
+      reason: 'test',
+      relatedPaymentId: 12,
+    });
+    expect(created).toEqual({
+      id: 12,
+      memberId: 4,
+      amount: 25,
+      reason: 'test',
+      status: 'SUCCESS',
+      type: 'REFUND',
+      relatedPaymentId: 12,
+    });
+  });
+
+  it('resolves with the recorded pending refund on 202', async () => {
+    const pending = {
+      id: 13,
+      memberId: 4,
+      amount: 25,
+      reason: 'test',
+      status: 'PENDING',
+      type: 'REFUND',
+      relatedPaymentId: 12,
+    };
+    const { url } = await startStubServer((req, res) => {
+      req.on('data', () => {});
+      req.on('end', () => {
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(pending));
+      });
+    });
+    process.env.PAYMENTS_SERVICE_URL = url;
+
+    const created = await paymentClient.refund({
+      memberId: 4,
+      amount: 25,
+      reason: 'test',
+      relatedPaymentId: 12,
+    });
+
+    expect(created).toEqual(pending);
+  });
+
+  it('rejects with an ApiError when the payments service refuses the refund (409)', async () => {
+    const { url } = await startStubServer((req, res) => {
+      req.on('data', () => {});
+      req.on('end', () => {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ message: 'charge 12 has already been refunded' }));
+      });
+    });
+    process.env.PAYMENTS_SERVICE_URL = url;
+
+    const error = await captureError(
+      paymentClient.refund({ memberId: 4, amount: 25, reason: 'test', relatedPaymentId: 12 })
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.statusCode).toBe(503);
+    expect(error.message).toContain('try again later');
+  });
+
+  it('rejects with ApiError 503 when the payments service cannot be reached', async () => {
+    const { server, url } = await startStubServer((req, res) => res.end('{}'));
+    await closeServer(server);
+    process.env.PAYMENTS_SERVICE_URL = url;
+
+    const error = await captureError(
+      paymentClient.refund({ memberId: 4, amount: 25, reason: 'test', relatedPaymentId: 12 })
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.statusCode).toBe(503);
+    expect(error.message).toContain('try again later');
+  });
+});

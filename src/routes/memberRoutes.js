@@ -7,6 +7,7 @@ router.get('/', memberController.list);
 router.get('/:id', memberController.getById);
 router.post('/', memberController.create);
 router.post('/:id/renew', memberController.renew);
+router.post('/:id/cancel', memberController.cancel);
 router.get('/:id/payments', memberController.listPayments);
 router.put('/:id', memberController.update);
 router.delete('/:id', memberController.remove);

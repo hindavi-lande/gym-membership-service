@@ -4,7 +4,7 @@ Baseline Express scaffold for a fitness/gym membership domain: bare-minimum setu
 
 ## Domain model
 
-- **Member** — firstName, lastName, email (unique, required), phone (optional), membershipPlan (`BASIC` / `STANDARD` / `PREMIUM`, defaults to `BASIC`), status (`ACTIVE` / `INACTIVE` / `SUSPENDED`, defaults to `ACTIVE`), joinedAt (defaults to today), renewalDate (nullable; set to today + 30 days after a successful renewal charge, `null` until then)
+- **Member** — firstName, lastName, email (unique, required), phone (optional), membershipPlan (`BASIC` / `STANDARD` / `PREMIUM`, defaults to `BASIC`), status (`ACTIVE` / `INACTIVE` / `SUSPENDED`, defaults to `ACTIVE`), joinedAt (defaults to today), renewalDate (nullable; set to today + 30 days after a successful renewal charge, `null` until then), lastPaymentId (nullable; the id of the renewal charge that paid for the current period, `null` until a renewal succeeds), refundFollowUpRequired (boolean, defaults to `false`; set for staff follow-up when a cancellation refund could not be processed)
 
 ## Stack
 
@@ -38,7 +38,7 @@ Listens on `http://localhost:3000` (configurable via `PORT`). SQLite file is cre
 
 Renewals and payment history are delegated to a separate `gym-payments-service`, whose base URL is configured via `PAYMENTS_SERVICE_URL` (defaults to `http://localhost:3001`).
 
-> **Note:** this project has no migration tooling — `src/server.js` calls plain `sequelize.sync()`, which does not alter an existing table. If you already have a `data/dev.sqlite` from before `renewalDate` was added, delete it (it is recreated on the next start) so the new column appears.
+> **Note:** this project has no migration tooling — `src/server.js` calls plain `sequelize.sync()`, which does not alter an existing table. If you already have a `data/dev.sqlite` from before `renewalDate`, `lastPaymentId` or `refundFollowUpRequired` were added, delete it (it is recreated on the next start) so the new columns appear.
 
 ## Endpoints
 
