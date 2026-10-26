@@ -49,7 +49,9 @@ Renewals and payment history are delegated to a separate `gym-payments-service`,
 - `PUT /api/members/:id` — partial update
 - `DELETE /api/members/:id`
 - `POST /api/members/:id/renew` — renew the member's current plan (no body). Charges the plan's price through `gym-payments-service` and, only on success, sets `renewalDate` to today + 30 days. Responds `402` when the charge is declined, `503` when the payments service is unreachable (in both cases the renewal is **not** applied)
-- `GET /api/members/:id/payments` — the member's past renewal charges, proxied as a raw pass-through of the `gym-payments-service` history array (nothing is stored locally; `404` for an unknown member, `503` when the payments service is unreachable)
+- `GET /api/members/:id/payments` — the member's details together with their payment history in a single view: `200` with `{ "member", "payments" }`. `member` is the same object `GET /api/members/:id` returns (name, plan, status, `renewalDate` — `null` until a renewal succeeds). `payments` holds every event `gym-payments-service` has for the member — successful charges, refunds and failed charge attempts — each with its `amount`, its date (`createdAt`) and its `type` (`CHARGE` or `REFUND`), so a charge is distinguishable from a refund. Every `CHARGE` also carries `refundedAmount`, the sum of the amounts of the `REFUND` rows whose `relatedPaymentId` points at it (`0` when nothing has been refunded and on failed charges; a refund with no `relatedPaymentId` belongs to no charge and is listed as its own entry). The list is ordered most recent first. Nothing is stored locally. An unknown member id responds `404` with `Member with id X not found` and the payments service is not consulted; when the payments service is unreachable the request still succeeds with `200` and `{ "member", "payments": [], "paymentHistoryError": "<message>" }`, so the member's details are still shown with a clear notice that the history could not be loaded.
+
+  The refunded portion of each charge is computed in this service, on each request, from the refunds in the history — it is not stored.
 
 ## Planned tickets (not yet implemented)
 
