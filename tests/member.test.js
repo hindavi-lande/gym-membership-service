@@ -151,6 +151,189 @@ describe('DELETE /api/members/:id', () => {
   });
 });
 
+describe('POST /api/members/:id/merge', () => {
+  const paymentsServiceUrl = (
+    process.env.PAYMENTS_SERVICE_URL || 'http://localhost:3001'
+  ).replace(/\/+$/, '');
+  const mergeUrl = `${paymentsServiceUrl}/api/payments/merge`;
+
+  const keptAccount = {
+    firstName: 'Kept',
+    lastName: 'Account',
+    email: 'kept@example.com',
+    membershipPlan: 'PREMIUM',
+  };
+
+  const duplicateAccount = {
+    firstName: 'Duplicate',
+    lastName: 'Account',
+    email: 'duplicate@example.com',
+    membershipPlan: 'STANDARD',
+  };
+
+  const originalFetch = global.fetch;
+  let fetchMock;
+
+  beforeEach(() => {
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ moved: 2 }) });
+    global.fetch = fetchMock;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  async function createPair() {
+    const kept = await request(app).post('/api/members').send(keptAccount);
+    const duplicate = await request(app).post('/api/members').send(duplicateAccount);
+    return { kept, duplicate };
+  }
+
+  it('merges the duplicate into the kept member', async () => {
+    const { kept, duplicate } = await createPair();
+
+    const res = await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: duplicate.body.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(kept.body.id);
+
+    const after = await request(app).get(`/api/members/${duplicate.body.id}`);
+    expect(after.status).toBe(404);
+  });
+
+  it('leaves the kept member details unchanged', async () => {
+    const { kept, duplicate } = await createPair();
+
+    await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: duplicate.body.id });
+
+    const res = await request(app).get(`/api/members/${kept.body.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: kept.body.id,
+      firstName: keptAccount.firstName,
+      lastName: keptAccount.lastName,
+      email: keptAccount.email,
+      membershipPlan: keptAccount.membershipPlan,
+      status: kept.body.status,
+    });
+  });
+
+  it('sends the duplicate and the kept account to the payments service', async () => {
+    const { kept, duplicate } = await createPair();
+
+    await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: duplicate.body.id });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(mergeUrl);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({
+      fromMemberId: duplicate.body.id,
+      toMemberId: kept.body.id,
+    });
+  });
+
+  it('rejects merging an account into itself', async () => {
+    const { kept } = await createPair();
+
+    const res = await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: kept.body.id });
+
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const after = await request(app).get(`/api/members/${kept.body.id}`);
+    expect(after.status).toBe(200);
+    expect(after.body.email).toBe(keptAccount.email);
+  });
+
+  it('returns 404 when the kept account does not exist', async () => {
+    const { duplicate } = await createPair();
+
+    const res = await request(app)
+      .post('/api/members/999999/merge')
+      .send({ duplicateMemberId: duplicate.body.id });
+
+    expect(res.status).toBe(404);
+    expect(res.body.message).toContain('999999');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const after = await request(app).get(`/api/members/${duplicate.body.id}`);
+    expect(after.status).toBe(200);
+  });
+
+  it('returns 404 when the duplicate account does not exist', async () => {
+    const { kept } = await createPair();
+
+    const res = await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: 999999 });
+
+    expect(res.status).toBe(404);
+    expect(res.body.message).toContain('999999');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const after = await request(app).get(`/api/members/${kept.body.id}`);
+    expect(after.status).toBe(200);
+  });
+
+  it('rolls the merge back when the payments service is unreachable', async () => {
+    const { kept, duplicate } = await createPair();
+    fetchMock.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:3001'));
+
+    const res = await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: duplicate.body.id });
+
+    expect(res.status).toBe(502);
+
+    const keptAfter = await request(app).get(`/api/members/${kept.body.id}`);
+    expect(keptAfter.status).toBe(200);
+    expect(keptAfter.body.email).toBe(keptAccount.email);
+
+    const duplicateAfter = await request(app).get(`/api/members/${duplicate.body.id}`);
+    expect(duplicateAfter.status).toBe(200);
+    expect(duplicateAfter.body.email).toBe(duplicateAccount.email);
+  });
+
+  it('rolls the merge back when the payments service answers with an error', async () => {
+    const { kept, duplicate } = await createPair();
+    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+
+    const res = await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: duplicate.body.id });
+
+    expect(res.status).toBe(502);
+
+    const keptAfter = await request(app).get(`/api/members/${kept.body.id}`);
+    expect(keptAfter.status).toBe(200);
+
+    const duplicateAfter = await request(app).get(`/api/members/${duplicate.body.id}`);
+    expect(duplicateAfter.status).toBe(200);
+  });
+
+  it('merges successfully when the duplicate has no payments', async () => {
+    const { kept, duplicate } = await createPair();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ moved: 0 }) });
+
+    const res = await request(app)
+      .post(`/api/members/${kept.body.id}/merge`)
+      .send({ duplicateMemberId: duplicate.body.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(kept.body.id);
+  });
+});
+
 describe('unknown routes', () => {
   it('returns 404 for an undefined route', async () => {
     const res = await request(app).get('/api/not-a-real-route');
