@@ -102,6 +102,13 @@ function getMemberPayments(memberId) {
   return request(`/api/payments/member/${encodeURIComponent(memberId)}`);
 }
 
+function refund({ memberId, amount, reason, relatedPaymentId }) {
+  return request('/api/payments/refund', {
+    method: 'POST',
+    body: { memberId, amount, reason, relatedPaymentId },
+  });
+}
+
 module.exports = {
   PAYMENTS_UNAVAILABLE_MESSAGE,
   PAYMENT_DECLINED_MESSAGE,
@@ -109,4 +116,5 @@ module.exports = {
   request,
   charge,
   getMemberPayments,
+  refund,
 };

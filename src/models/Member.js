@@ -44,6 +44,15 @@ const Member = sequelize.define('Member', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
+  lastPaymentId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  refundFollowUpRequired: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
 }, {
   tableName: 'members',
   timestamps: true,
