@@ -171,21 +171,71 @@ function expectedRenewalDate() {
   return renewal.toISOString().slice(0, 10);
 }
 
+// Mirrors what gym-payments-service returns for a member: charge and refund
+// events, each with its own type, amount and createdAt. The rows are deliberately
+// shuffled (not most-recent-first) so the ordering assertions exercise the
+// service's sort rather than the fixture's.
 function buildPaymentsHistory(memberId) {
   return [
     {
+      id: 3,
+      memberId,
+      type: 'REFUND',
+      amount: 20,
+      status: 'SUCCESS',
+      reason: 'Partial refund for charge 2',
+      relatedPaymentId: 2,
+      createdAt: '2024-03-10T09:00:00.000Z',
+    },
+    {
       id: 1,
       memberId,
+      type: 'CHARGE',
       amount: 49.99,
+      status: 'FAILED',
       reason: 'PREMIUM plan renewal',
-      status: 'SUCCESS',
+      relatedPaymentId: null,
+      createdAt: '2024-01-05T09:00:00.000Z',
     },
     {
       id: 2,
       memberId,
+      type: 'CHARGE',
       amount: 49.99,
-      reason: 'PREMIUM plan renewal',
       status: 'SUCCESS',
+      reason: 'PREMIUM plan renewal',
+      relatedPaymentId: null,
+      createdAt: '2024-02-05T09:00:00.000Z',
+    },
+    {
+      id: 5,
+      memberId,
+      type: 'REFUND',
+      amount: 20,
+      status: 'SUCCESS',
+      reason: 'Partial refund for charge 2',
+      relatedPaymentId: 2,
+      createdAt: '2024-03-11T09:00:00.000Z',
+    },
+    {
+      id: 4,
+      memberId,
+      type: 'REFUND',
+      amount: 5,
+      status: 'SUCCESS',
+      reason: 'Goodwill refund, not tied to a charge',
+      relatedPaymentId: null,
+      createdAt: '2024-03-12T09:00:00.000Z',
+    },
+    {
+      id: 6,
+      memberId,
+      type: 'CHARGE',
+      amount: 49.99,
+      status: 'FAILED',
+      reason: 'PREMIUM plan renewal',
+      relatedPaymentId: null,
+      createdAt: '2024-03-10T09:00:00.000Z',
     },
   ];
 }
@@ -291,19 +341,81 @@ describe('POST /api/members/:id/renew', () => {
 });
 
 describe('GET /api/members/:id/payments', () => {
-  it('proxies the raw payments history array from the payments service', async () => {
+  it('returns the member together with the payment history in one view', async () => {
     const created = await request(app).post('/api/members').send(validMember);
-    const history = buildPaymentsHistory(created.body.id);
-    paymentClient.getMemberPayments.mockResolvedValue(history);
+    paymentClient.getMemberPayments.mockResolvedValue(buildPaymentsHistory(created.body.id));
 
     const res = await request(app).get(`/api/members/${created.body.id}/payments`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(history);
+    expect(Object.keys(res.body).sort()).toEqual(['member', 'payments']);
+    expect(res.body).not.toHaveProperty('paymentHistoryError');
+    expect(res.body.member).toMatchObject({
+      id: created.body.id,
+      firstName: 'Jane',
+      lastName: 'Doe',
+      membershipPlan: 'PREMIUM',
+      renewalDate: null,
+    });
+    expect(Array.isArray(res.body.payments)).toBe(true);
+    expect(res.body.payments).toHaveLength(6);
     expect(paymentClient.getMemberPayments).toHaveBeenCalledWith(created.body.id);
   });
 
-  it('returns 503 with a try-again-later message when the payments service is unreachable', async () => {
+  it('sums REFUND rows into refundedAmount on the charge they belong to', async () => {
+    const created = await request(app).post('/api/members').send(validMember);
+    paymentClient.getMemberPayments.mockResolvedValue(buildPaymentsHistory(created.body.id));
+
+    const res = await request(app).get(`/api/members/${created.body.id}/payments`);
+
+    expect(res.status).toBe(200);
+    const byId = new Map(res.body.payments.map((payment) => [payment.id, payment]));
+
+    // 49.99 charged, refunded by two 20 rows -> 40 (summed in whole cents, no floating-point tail).
+    expect(byId.get(2).refundedAmount).toBe(40);
+    // A failed charge cannot be refunded, and an unrefunded charge gets 0.
+    expect(byId.get(1).refundedAmount).toBe(0);
+    expect(byId.get(6).refundedAmount).toBe(0);
+    expect(byId.get(1)).toMatchObject({
+      type: 'CHARGE',
+      status: 'FAILED',
+      amount: 49.99,
+    });
+
+    // REFUND rows are listed as their own entries and carry no refundedAmount.
+    [3, 4, 5].forEach((id) => {
+      expect(byId.get(id).type).toBe('REFUND');
+      expect(byId.get(id)).not.toHaveProperty('refundedAmount');
+    });
+
+    // A refund with no relatedPaymentId still appears, and is counted nowhere.
+    expect(byId.get(4).relatedPaymentId).toBeNull();
+    expect(byId.get(4).amount).toBe(5);
+
+    // Every event keeps its type, its amount and its date.
+    res.body.payments.forEach((payment) => {
+      expect(['CHARGE', 'REFUND']).toContain(payment.type);
+      expect(payment.amount).toEqual(expect.any(Number));
+      expect(payment.createdAt).toEqual(expect.any(String));
+    });
+  });
+
+  it('orders the history most recent first, even when the client returns it shuffled', async () => {
+    const created = await request(app).post('/api/members').send(validMember);
+    paymentClient.getMemberPayments.mockResolvedValue(buildPaymentsHistory(created.body.id));
+
+    const res = await request(app).get(`/api/members/${created.body.id}/payments`);
+
+    expect(res.status).toBe(200);
+    // createdAt descending, id descending breaking the 2024-03-10 tie (6 before 3).
+    expect(res.body.payments.map((payment) => payment.id)).toEqual([4, 5, 6, 3, 2, 1]);
+    // Dates and amounts come through exactly as the payments service sent them.
+    expect(res.body.payments[0].createdAt).toBe('2024-03-12T09:00:00.000Z');
+    expect(res.body.payments[5].createdAt).toBe('2024-01-05T09:00:00.000Z');
+    expect(res.body.payments.find((payment) => payment.id === 2).amount).toBe(49.99);
+  });
+
+  it('still returns the member with a notice when the payments service is unreachable', async () => {
     const created = await request(app).post('/api/members').send(validMember);
     paymentClient.getMemberPayments.mockRejectedValue(
       new ApiError(503, 'Payment service is unavailable. Please try again later.')
@@ -311,14 +423,23 @@ describe('GET /api/members/:id/payments', () => {
 
     const res = await request(app).get(`/api/members/${created.body.id}/payments`);
 
-    expect(res.status).toBe(503);
-    expect(res.body.message).toContain('try again later');
+    expect(res.status).toBe(200);
+    expect(res.body.member).toMatchObject({
+      id: created.body.id,
+      firstName: 'Jane',
+      lastName: 'Doe',
+      membershipPlan: 'PREMIUM',
+      renewalDate: null,
+    });
+    expect(res.body.payments).toEqual([]);
+    expect(res.body.paymentHistoryError).toMatch(/try again later/i);
   });
 
   it('returns 404 and does not call the payments client for an unknown member', async () => {
     const res = await request(app).get('/api/members/999999/payments');
 
     expect(res.status).toBe(404);
+    expect(res.body.message).toBe('Member with id 999999 not found');
     expect(paymentClient.getMemberPayments).not.toHaveBeenCalled();
   });
 });

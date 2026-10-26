@@ -56,8 +56,8 @@ async function renew(req, res, next) {
 
 async function listPayments(req, res, next) {
   try {
-    const payments = await memberService.getMemberPayments(req.params.id);
-    res.json(payments);
+    const view = await memberService.getMemberPaymentHistory(req.params.id);
+    res.json(view);
   } catch (err) {
     next(err);
   }
